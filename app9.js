@@ -233,11 +233,17 @@ var updateEmplList = function (
       return;
     }
     console.log("데이터베이스 연결 스레드 아이디 : " + conn.threadId);
+    var data = {
+      empl_position: empl_position,
+      empl_money: empl_money,
+      empl_context: empl_context,
+      use_tech: use_tech,
+    };
 
     // sql문을 실행합니다.
     var exec = conn.query(
-      "update empl_list set empl_position= ??, empl_money= ??, empl_context=??,use_tech=?? where enter_id = ??",
-      [empl_position, empl_money, empl_context, use_tech, enter_id],
+      "update empl_list set ? where enter_id =" + '"' + enter_id + '"',
+      data,
       function (err, res) {
         conn.release(); // 반드시 해제해야 합니다.
         console.log("실행 대상 sql : " + exec.sql);
@@ -247,6 +253,39 @@ var updateEmplList = function (
         }
 
         callback(null, res);
+      }
+    );
+  });
+};
+
+var deleteList = function (enter_id, callback) {
+  console.log("deleteList 호출됨.");
+
+  // 커넥션 풀에서 연결 객체를 가져옵니다.
+  pool.getConnection(function (err, conn) {
+    if (err) {
+      if (conn) {
+        conn.release(); // 반드시 해제해야 합니다.
+      }
+      callback(err, null);
+      return;
+    }
+    console.log("데이터베이스 연결 스레드 아이디 : " + conn.threadId);
+
+    var tablename = "empl_list";
+
+    // sql문을 실행합니다.
+    var exec = conn.query(
+      "delete from empl_list where enter_id = " + '"' + enter_id + '"',
+      function (err, res) {
+        conn.release(); // 반드시 해제해야 합니다.
+        console.log("실행 대상 sql : " + exec.sql);
+        console.log(" 채용공고 삭제 ");
+        if (res) {
+          callback(null, res);
+        } else {
+          callback(err, null);
+        }
       }
     );
   });
@@ -399,9 +438,9 @@ router.route("/process/listuser").post(function (req, res) {
             "<div><p>채용 기술 :" + listUser[i].use_tech + "</p></div>"
           );
           res.write(
-            "<a href='/process/deleteList?enter_id='" +
+            "<a href='/process/deleteList?enter_id=" +
               listUser[i].enter_id +
-              ">채용공고 삭제</a>"
+              "'>채용공고 삭제</a>"
           );
           res.write("<hr/>");
         }
@@ -424,7 +463,7 @@ router.route("/process/updateList").get(function (req, res) {
       res.write("<h1>채용 리스트</h1>");
       res.write(
         "<form method='post' action='/process/updateEmplList'>" +
-          "<div>회사 id : <input type='text' name='enter_id' value=" +
+          "<div>회사 id : <input type='text' disabled=true name='enter_id' value=" +
           listEmpl[0].enter_id +
           ">" +
           "</div>"
@@ -477,11 +516,23 @@ router.route("/process/updateEmplList").post(function (req, res) {
       empl_context,
       use_tech,
       function (err, updateEmplList) {
-        console.log(updateEmplList);
-        location.href = "/list.html";
+        res.writeHead("200", { "Content-Type": "text/html;charset=utf8" });
+        res.write("<h1>업데이트성공</h1>");
+        res.write("<div><a href='/listuser.html'>리스트로 돌아가기</a></div>");
       }
     );
   }
+});
+
+router.route("/process/deleteList?:enter_id").get(function (req, res) {
+  var enter_id = req.query.enter_id;
+  deleteList(enter_id, function () {
+    console.log("deleteList");
+    res.writeHead("200", { "Content-Type": "text/html;charset=utf8" });
+    res.write("<h1>삭제성공</h1>");
+    res.write("<div><p>삭제성공<p></div>");
+    res.write("<div><a href='/listuser.html'>리스트로 돌아가기</a></div>");
+  });
 });
 
 // 라우터 객체 등록
