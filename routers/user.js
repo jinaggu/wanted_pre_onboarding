@@ -1,55 +1,12 @@
-//Express 모듈 불러오기
-var express = require("express"),
-  http = require("http"),
-  path = require("path");
-var fs = require("fs");
+var pool;
 
-// 익스프레스 미들웨어 불러오기
-var bodyParser = require("body-parser"),
-  cookieParser = require("cookie-parser"),
-  static = require("serve-static"),
-  errorHandler = require("errorhandler");
+var init = (p) => {
+  console.log("user js init 호출됨.");
+  pool = p;
+};
 
-var expressErrorHandler = require("express-error-handler"); // 오류 핸들러 모듈사용
-var expressSession = require("express-session"); // session 미들웨어 불러오기
-
-var mysql = require("mysql");
-const { copyFileSync } = require("fs");
-
-var pool = mysql.createPool({
-  connectionLimit: 10,
-  host: "localhost",
-  user: "root",
-  password: "1234",
-  database: "hp",
-  debug: false,
-});
-
-// 익스프레스 객체 생성
-var app = express();
-
-app.set("port", process.env.PORT || 3000);
-app.use(bodyParser.urlencoded({ extended: false }));
-app.use(bodyParser.json());
-app.use(express.static("public"));
-app.use(cookieParser());
-
-// 세션 설정
-app.use(
-  expressSession({
-    secret: "my key",
-    resave: true,
-    saveUninitialized: true,
-  })
-);
-
-// 데이터베이스 객체를 위한 변수 선언
-var database;
-
-// 사용자를 인증하는 함수
-var authUser = function (id, password, callback) {
-  console.log("authUser 호출됨.");
-
+var authUser = function (pool, id, password, callback) {
+  console.log("authUser 호출됨." + id + "/" + password);
   // 커넥션 풀에서 연결 객체를 가져옵니다.
   pool.getConnection(function (err, conn) {
     if (err) {
@@ -125,7 +82,7 @@ var authList = function (enter_id, callback) {
   });
 };
 
-// 사용자를 추가하는 함수
+// 채용리스트 추가하는 함수
 var addUser = function (
   enter_id,
   empl_position,
@@ -291,11 +248,7 @@ var deleteList = function (enter_id, callback) {
   });
 };
 
-// 라우터 객체 참조
-var router = express.Router();
-
-// 로그인 라우팅 함수 - 데이터베이스의 정보와 비교
-router.route("/process/login").post(function (req, res) {
+var login = function (req, res) {
   console.log("/process/login 호출됨.");
 
   // 요청 파라미터 확인
@@ -305,9 +258,8 @@ router.route("/process/login").post(function (req, res) {
   console.log("요청 파라미터 : " + paramId + ", " + paramPassword);
 
   // pool객체가 초기화 된 경우,
-
-  if (database) {
-    authUser(database, paramId, paramPassword, function (err, docs) {
+  if (pool) {
+    authUser(pool, paramId, paramPassword, function (err, docs) {
       if (err) {
         throw err;
       }
@@ -335,10 +287,9 @@ router.route("/process/login").post(function (req, res) {
     res.write("<div><p>데이터베이스에 연겨하지 못했습니다.<p></div>");
     res.end();
   }
-});
+};
 
-// 채용공고 추가 라우팅 함수 - 클라이언트에서 보내온 데이터를 이용해 데이터베이스에 추가
-router.route("/process/addlist").post(function (req, res) {
+var addList = function (req, res) {
   console.log("/process/adduser 호출됨.");
 
   var enter_id = req.body.enter_id || req.query.enter_id;
@@ -399,10 +350,9 @@ router.route("/process/addlist").post(function (req, res) {
       }
     );
   }
-});
+};
 
-// 사용자 리스트 함수
-router.route("/process/listuser").post(function (req, res) {
+var listuser = function (req, res) {
   console.log("/process/listuser 호출됨.");
   // pool객체가 초기화된 경우, addUser 함수 호출하여 사용자 추가
   if (pool) {
@@ -419,8 +369,12 @@ router.route("/process/listuser").post(function (req, res) {
       // 결과 객체 있으면 성공 응답 전송
       if (listUser) {
         res.writeHead("200", { "Content-Type": "text/html;charset=utf8" });
+        res.write("<h1>채용 리스트</h1>");
+        res.write(
+          "<div><input type='text' placeholder='채용공고 검색'/><a href='/process/search'>검색하기</a></div>"
+        );
+        res.write("<hr/>");
         for (var i = 0; i < listUser.length; i++) {
-          res.write("<h1>채용 리스트</h1>");
           res.write(
             "<div><a href='/process/updateList?enter_id=" +
               listUser[i].enter_id +
@@ -453,9 +407,9 @@ router.route("/process/listuser").post(function (req, res) {
       }
     });
   }
-});
+};
 
-router.route("/process/updateList").get(function (req, res) {
+var updateList = function (req, res) {
   var enter_id = req.query.enter_id;
   authList(enter_id, function (err, listEmpl) {
     if (listEmpl) {
@@ -499,9 +453,9 @@ router.route("/process/updateList").get(function (req, res) {
       res.end();
     }
   });
-});
+};
 
-router.route("/process/updateEmplList").post(function (req, res) {
+var updateEmplList2 = function (req, res) {
   var enter_id = req.body.enter_id || req.query.enter_id;
   var empl_position = req.body.empl_position || req.query.empl_position;
   var empl_money = req.body.empl_money || req.query.empl_money;
@@ -522,9 +476,9 @@ router.route("/process/updateEmplList").post(function (req, res) {
       }
     );
   }
-});
+};
 
-router.route("/process/deleteList?:enter_id").get(function (req, res) {
+var deleteList2 = function (res, req) {
   var enter_id = req.query.enter_id;
   deleteList(enter_id, function () {
     console.log("deleteList");
@@ -533,12 +487,15 @@ router.route("/process/deleteList?:enter_id").get(function (req, res) {
     res.write("<div><p>삭제성공<p></div>");
     res.write("<div><a href='/listuser.html'>리스트로 돌아가기</a></div>");
   });
-});
+};
 
-// 라우터 객체 등록
-app.use("/", router);
-
-// =========== 서버 시작 ============
-http.createServer(app).listen(app.get("port"), function () {
-  console.log("서버가 시작되었스니다. 포트 : " + app.get("port"));
-});
+module.exports.init = init;
+module.exports.login = login;
+module.exports.authList = authList;
+module.exports.listUser = listUser;
+module.exports.deleteList = deleteList;
+module.exports.addList = addList;
+module.exports.listuser = listuser;
+module.exports.updateList = updateList;
+module.exports.updateEmplList2 = updateEmplList2;
+module.exports.deleteList2 = deleteList2;
